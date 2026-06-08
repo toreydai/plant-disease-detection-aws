@@ -1,0 +1,5 @@
+numpy<2
+ultralytics==8.3.135
+torchvision
+pandas
+opencv-python-headless
