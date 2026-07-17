@@ -1,8 +1,8 @@
 # 马铃薯叶片疾病智能诊断
 
-## 实验简介
+## 项目简介
 
-本实验基于 [AWS 博文](https://aws.amazon.com/cn/blogs/china/potato-leaf-disease-recognition-and-classification-using-the-deepseek-r1-model-and-a-computer-vision-fine-tuning-model/) 实现马铃薯叶片疾病的自动识别与防治建议生成。
+本项目基于 [AWS 博文](https://aws.amazon.com/cn/blogs/china/potato-leaf-disease-recognition-and-classification-using-the-deepseek-r1-model-and-a-computer-vision-fine-tuning-model/) 实现马铃薯叶片疾病的自动识别与防治建议生成。
 
 上传一张马铃薯叶片照片，系统自动完成三件事：
 
@@ -12,7 +12,35 @@
 
 ---
 
-## 实验内容
+## 目录结构
+
+```
+plant-disease-detection-aws/
+├── notebooks/
+│   ├── train.ipynb              # 训练 & 四模型对比（方式A本地 / 方式B Training Job）
+│   └── deploy.ipynb             # 部署 SageMaker Real-time Endpoint
+├── sagemaker/
+│   ├── train_job.py             # Training Job 容器入口脚本
+│   ├── inference.py             # SageMaker 推理入口脚本
+│   └── requirements.txt         # 训练与推理共用依赖
+├── app/
+│   ├── main.py                  # Streamlit 前端（分类 + 建议 + 历史）
+│   └── requirements.txt
+├── infra/                       # 可选：CDK 一键部署（DynamoDB + IAM + EC2）
+│   ├── app.py
+│   ├── demo_stack.py
+│   ├── cdk.json
+│   └── requirements.txt
+├── docs/
+│   ├── design-demo.md           # 架构与技术设计
+│   └── testing.md               # 验证结果与踩坑记录
+├── run_pipeline.py              # 一键流水线：训练 → 打包 → 部署 Endpoint
+└── test_100.py                  # 批量推理精度验证脚本
+```
+
+---
+
+## 功能说明
 
 - 使用 PlantVillage 公开数据集（三分类，共 2152 张）训练四个模型并进行横向对比：
   - YOLO11n-cls（原博文基准模型）
@@ -34,7 +62,7 @@
 
 ---
 
-## 实验流程
+## 处理流程
 
 ```
 准备数据集
@@ -73,7 +101,7 @@ Streamlit (EC2)
 
 ---
 
-## 实验步骤
+## 使用步骤
 
 ### 步骤 1：克隆代码并准备数据集
 
@@ -241,7 +269,7 @@ val 集共 430 张，随机抽 100 张
 
 ---
 
-## 实验总结
+## 结果总结
 
 | 指标 | 结果 |
 |------|------|
@@ -254,13 +282,13 @@ val 集共 430 张，随机抽 100 张
 
 三个预训练模型在该数据集上均达到 100% val_acc，与原博文结论一致。数据集中 Healthy 类仅 152 张，样本分布不均衡，实际场景部署前建议补充更多健康叶片样本。
 
-详细验证结果与踩坑记录见 [`docs/test-results.md`](docs/test-results.md)，技术设计细节见 [`docs/design-demo.md`](docs/design-demo.md)。
+详细验证结果与踩坑记录见 [`docs/testing.md`](docs/testing.md)，技术设计细节见 [`docs/design-demo.md`](docs/design-demo.md)，端到端架构图与请求路径图见 [`docs/architecture.md`](docs/architecture.md)。
 
 ---
 
-## 环境清理
+## 清理
 
-实验结束后删除所有资源，避免持续计费：
+运行结束后删除所有资源，避免持续计费：
 
 ```bash
 # 删除 SageMaker Endpoint（主要计费项）
@@ -275,7 +303,7 @@ cd infra && cdk destroy
 # 若手动启动 EC2，在控制台终止实例
 ```
 
-**费用参考**（完整实验一次）：
+**费用参考**（完整运行一次）：
 
 | 资源 | 费用 |
 |------|------|
@@ -289,13 +317,10 @@ cd infra && cdk destroy
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 免责声明
 
-- 本项目仅供学习与技术参考，不构成任何商业建议或生产部署方案。
-- 运行本实验将产生 AWS 资源费用，请参考上方费用表并在实验结束后及时清理资源。
-- 模型基于 PlantVillage 公开数据集训练，仅在该数据集上验证，实际农业场景中的准确率可能存在差异。
-- 本项目与 Amazon Web Services、Moonshot AI 等厂商无官方关联，相关服务的可用性和定价以官方文档为准。
+本项目仅供学习与技术参考，不构成生产部署方案。运行过程中会创建 AWS 资源并产生费用，请在实验结束后及时清理。作者不对因使用本项目产生的任何费用或损失承担责任。本项目与 Amazon Web Services 无官方关联，相关服务的可用性与定价以 AWS 官方文档为准。生产环境使用前请根据实际需求进行安全评估与调整。
