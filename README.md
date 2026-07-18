@@ -32,7 +32,7 @@ plant-disease-detection-aws/
 │   ├── cdk.json
 │   └── requirements.txt
 ├── docs/
-│   ├── design-demo.md           # 架构与技术设计
+│   ├── deployment.md           # 架构与技术设计、完整分步部署指南
 │   └── testing.md               # 验证结果与踩坑记录
 ├── run_pipeline.py              # 一键流水线：训练 → 打包 → 部署 Endpoint
 └── test_100.py                  # 批量推理精度验证脚本
@@ -101,170 +101,35 @@ Streamlit (EC2)
 
 ---
 
-## 使用步骤
+## 快速开始
 
-### 步骤 1：克隆代码并准备数据集
-
-```bash
-git clone <本仓库地址>
-cd plant-disease-detection-aws
-```
-
-从 [PlantVillage 数据集](https://www.kaggle.com/datasets/arjuntejaswi/plant-village) 下载马铃薯三分类图片，按如下结构放置后上传到 SageMaker Notebook 实例：
-
-```
-data/
-├── train/
-│   ├── Early Blight/   # 800 张
-│   ├── Healthy/        # 122 张
-│   └── Late Blight/    # 800 张
-└── val/
-    ├── Early Blight/   # 200 张
-    ├── Healthy/        # 30 张
-    └── Late Blight/    # 200 张
-```
-
-**预期输出**：`data/` 目录结构就绪，train 共 1722 张，val 共 430 张。
-
----
-
-### 步骤 2：训练四模型并对比
-
-在 SageMaker Notebook 实例中打开 `notebooks/train.ipynb`，按环境选择执行路径：
-
-- **方式 A（有 GPU Notebook 实例）**：运行 Section A，四模型约 15 min；仅训 YOLO 可将顶部 `MODELS_TO_TRAIN` 改为 `['yolo']`，约 10 min
-- **方式 B（无本地 GPU）**：运行 Section B，提交 SageMaker Training Job 到 ml.g5.2xlarge（约 15 min），训完自动打印 `MODEL_DATA_S3` 路径
-
-**预期输出**：
-
-```
-=== 四模型对比 ===
-        model val_acc_pct  train_min  params_m
-  YOLO11n-cls     100.00%        7.7      1.53
-      ResNet50     100.00%        1.7     23.51
-  MobileNetV3     100.00%        0.6      4.21
-    PotatoCNN      93.95%        0.8      1.21
-```
-
-方式 A 产出 `runs/classify/train/weights/best.pt`；方式 B 打印 `MODEL_DATA_S3` S3 路径。
-
----
-
-### 步骤 3：部署 SageMaker Real-time Endpoint
-
-打开 `notebooks/deploy.ipynb`，根据训练方式设置 Cell 1 顶部变量：
-
-```python
-MODEL_SOURCE = 'local'   # 方式 A：打包本地 best.pt 上传 S3 再部署
-# 或
-MODEL_SOURCE = 's3'      # 方式 B：填入上一步打印的 MODEL_DATA_S3 路径
-```
-
-逐格运行，约 10 min。
-
-**预期输出**：
-
-```
-Endpoint 已部署：potato-disease-demo
-# 预热调用返回：
-{"names": ["Early Blight", "Healthy", "Late Blight"], "top1": 1, "top1conf": 0.998, ...}
-```
-
-SageMaker 控制台中 `potato-disease-demo` 状态为 **InService**。
-
----
-
-### 步骤 4：创建 DynamoDB 表并配置 IAM
-
-**建表**（On-demand 计费，演示量级成本可忽略）：
+大致 40 分钟跑通端到端：
 
 ```bash
+git clone <本仓库地址> && cd plant-disease-detection-aws
+
+# 1. SageMaker Notebook 中运行 notebooks/train.ipynb，训练四模型（约 10-15min）
+# 2. notebooks/deploy.ipynb 部署 Real-time Endpoint（约 10min）
+# 3. 建 DynamoDB 表 + 给 EC2/角色配置 IAM 权限（约 5min）
 aws dynamodb create-table \
   --table-name potato-disease-demo-records \
   --attribute-definitions AttributeName=id,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
-```
+  --billing-mode PAY_PER_REQUEST --region us-east-1
 
-**EC2 实例角色最小权限**（新建或附加到已有角色）：
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    { "Effect": "Allow", "Action": "sagemaker:InvokeEndpoint",
-      "Resource": "arn:aws:sagemaker:us-east-1:*:endpoint/potato-disease-demo" },
-    { "Effect": "Allow", "Action": "bedrock:InvokeModel",
-      "Resource": "arn:aws:bedrock:us-east-1::foundation-model/moonshotai.kimi-k2.5" },
-    { "Effect": "Allow", "Action": ["dynamodb:PutItem", "dynamodb:Scan"],
-      "Resource": "arn:aws:dynamodb:us-east-1:*:table/potato-disease-demo-records" }
-  ]
-}
-```
-
-**预期输出**：DynamoDB 控制台中表状态为 **ACTIVE**。
-
----
-
-### 步骤 5：启动 Streamlit 前端
-
-在已挂好 IAM 角色的 EC2 上（安全组放行 TCP 8501）：
-
-```bash
+# 4. EC2 上启动 Streamlit 前端（约 5min，先预热一次 Endpoint 再演示）
 pip install -r app/requirements.txt
 streamlit run app/main.py --server.address 0.0.0.0
 ```
 
-**预期输出**：
+数据集准备、四模型训练对比、Endpoint 部署（含 local/s3 两种模型来源）、IAM 最小权限 policy、单 Stack CDK 一键部署等完整分步说明见 [`docs/deployment.md`](docs/deployment.md)，端到端验证结果与踩坑记录见 [`docs/testing.md`](docs/testing.md)。
 
-```
-You can now view your Streamlit app in your browser.
-Network URL: http://<私有IP>:8501
-External URL: http://<公网IP>:8501
-```
-
-浏览器打开 `http://<EC2公网IP>:8501`，出现「诊断」和「历史记录」两个标签页。
-
-> **首次使用前先预热 Endpoint**：在「诊断」Tab 随意上传一张图片调用一次，等待返回结果（约 3-5s），此后响应将稳定在 0.1s 级别。
-
----
-
-### 步骤 6（可选）：一键流水线 `run_pipeline.py`
-
-如需重新训练并自动更新 Endpoint，在任意有 AWS 凭证的机器上运行：
+## 可选脚本
 
 ```bash
-python3 run_pipeline.py              # 四模型全训
-python3 run_pipeline.py --yolo-only  # 仅训 YOLO（约 10 min）
-```
-
-**预期输出**：
-
-```
-[HH:MM:SS] Step 1: 打包 sagemaker/ 源代码 → S3  ✓
-[HH:MM:SS] Step 2: 提交 Training Job: potato-4models-<timestamp>  ✓
-[HH:MM:SS] Step 3: 等待训练完成...  ✓ 计费 919s
-[HH:MM:SS] Step 4: === 四模型对比结果 ===  ✓
-[HH:MM:SS] Step 5-7: 创建 Model → EndpointConfig → 更新 Endpoint  ✓
-[HH:MM:SS] ✓ 全流程完成！Endpoint: potato-disease-demo (InService)
-```
-
----
-
-### 步骤 7（可选）：批量精度验证
-
-```bash
-python3 test_100.py
-```
-
-**预期输出**：
-
-```
-val 集共 430 张，随机抽 100 张
-...
-总体准确率: 100/100 = 100.0%
-总耗时: 11.2s  均值: 0.11s/张
+python3 run_pipeline.py              # 端到端一键流水线：训练 → 打包 → 部署 Endpoint（四模型全训）
+python3 run_pipeline.py --yolo-only  # 仅训 YOLO，约 10 min
+python3 test_100.py                  # 批量精度验证：val 集随机抽 100 张跑推理
 ```
 
 ---
@@ -282,36 +147,18 @@ val 集共 430 张，随机抽 100 张
 
 三个预训练模型在该数据集上均达到 100% val_acc，与原博文结论一致。数据集中 Healthy 类仅 152 张，样本分布不均衡，实际场景部署前建议补充更多健康叶片样本。
 
-详细验证结果与踩坑记录见 [`docs/testing.md`](docs/testing.md)，技术设计细节见 [`docs/design-demo.md`](docs/design-demo.md)，端到端架构图与请求路径图见 [`docs/architecture.md`](docs/architecture.md)。
-
 ---
 
 ## 清理
 
-运行结束后删除所有资源，避免持续计费：
-
 ```bash
-# 删除 SageMaker Endpoint（主要计费项）
 aws sagemaker delete-endpoint --endpoint-name potato-disease-demo --region us-east-1
-
-# 删除 DynamoDB 表
 aws dynamodb delete-table --table-name potato-disease-demo-records --region us-east-1
-
-# 若使用 CDK 部署前端
-cd infra && cdk destroy
-
+# 若用 CDK 部署前端：cd infra && cdk destroy
 # 若手动启动 EC2，在控制台终止实例
 ```
 
-**费用参考**（完整运行一次）：
-
-| 资源 | 费用 |
-|------|------|
-| Training Job（ml.g5.2xlarge，~15 min） | ~$0.5 |
-| Endpoint（ml.m5.large，按小时） | ~$0.115/h |
-| EC2 前端（t3.small，按小时） | ~$0.023/h |
-| Bedrock Kimi K2.5 | 按 token，每次建议 < $0.01 |
-| DynamoDB On-demand | 演示量级 ≈ $0 |
+费用参考（完整运行一次约 $2-3）见 [`docs/deployment.md`](docs/deployment.md#8-成本与清理)。
 
 ---
 
@@ -323,4 +170,8 @@ MIT - see the [LICENSE](LICENSE) file for details.
 
 ## 免责声明
 
-本项目仅供学习与技术参考，不构成生产部署方案。运行过程中会创建 AWS 资源并产生费用，请在实验结束后及时清理。作者不对因使用本项目产生的任何费用或损失承担责任。本项目与 Amazon Web Services 无官方关联，相关服务的可用性与定价以 AWS 官方文档为准。生产环境使用前请根据实际需求进行安全评估与调整。
+- 本项目仅供学习与技术参考，不构成生产部署方案。
+- 运行过程中会创建 AWS 资源并产生费用，请在实验结束后及时清理。
+- 作者不对因使用本项目产生的任何费用或损失承担责任。
+- 本项目与 Amazon Web Services 无官方关联，相关服务的可用性与定价以 AWS 官方文档为准。
+- 生产环境使用前请根据实际需求进行安全评估与调整。

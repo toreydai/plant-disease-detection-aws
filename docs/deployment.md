@@ -214,7 +214,7 @@ aws dynamodb delete-table --table-name potato-disease-demo-records
 ```
 plant-disease-detection-aws/
 ├── docs/
-│   ├── design-demo.md              # 本文档（轻量 demo）
+│   ├── deployment.md              # 本文档（轻量 demo，含设计+部署）
 │   └── testing.md             # 端到端验证结果 + 踩坑记录
 ├── notebooks/
 │   ├── train.ipynb                 # 训练 & 四模型对比（Section A 本地 / Section B Training Job）
